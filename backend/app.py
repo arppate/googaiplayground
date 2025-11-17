@@ -1,74 +1,49 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from google.cloud import storage
 import uuid
 import os
 
 app = FastAPI()
-
 BUCKET_NAME = os.getenv("VIDEO_BUCKET", "clip2campaign-videos")
 
-@app.post("/upload-video")
-async def upload_video(file: UploadFile = File(...)):
-    # Validate
-    if not file.content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="Invalid video file")
-
-    # Generate unique ID
-    video_id = str(uuid.uuid4())
-    file_extension = file.filename.split(".")[-1]
-    blob_name = f"videos/{video_id}.{file_extension}"
-
+# 1) GENERATE SIGNED URL
+@app.get("/generate-upload-url")
+def generate_upload_url():
     try:
-        # Upload to GCS
         storage_client = storage.Client()
         bucket = storage_client.bucket(BUCKET_NAME)
+
+        video_id = str(uuid.uuid4())
+        blob_name = f"videos/{video_id}.mp4"
         blob = bucket.blob(blob_name)
 
-        blob.upload_from_file(file.file, content_type=file.content_type)
+        upload_url = blob.generate_signed_url(
+            version="v4",
+            expiration=900,
+            method="PUT",
+            content_type="video/mp4",
+        )
 
-        gcs_uri = f"gs://{BUCKET_NAME}/{blob_name}"
+        return {
+            "upload_url": upload_url,
+            "gcs_path": blob_name,
+            "video_id": video_id
+        }
 
-        return JSONResponse(content={
-            "video_id": video_id,
-            "gcs_uri": gcs_uri
-        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
-from google.cloud import storage
-import uuid
-import os
 
-app = FastAPI()
 
-BUCKET_NAME = os.getenv("VIDEO_BUCKET", "clip2campaign-videos")
+# 2) REGISTER VIDEO AFTER UPLOAD
+class VideoMetadata(BaseModel):
+    gcs_path: str
+    video_id: str
 
 @app.post("/upload-video")
-async def upload_video(file: UploadFile = File(...)):
-    # Validate
-    if not file.content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="Invalid video file")
-
-    # Generate unique ID
-    video_id = str(uuid.uuid4())
-    file_extension = file.filename.split(".")[-1]
-    blob_name = f"videos/{video_id}.{file_extension}"
-
-    try:
-        # Upload to GCS
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(blob_name)
-
-        blob.upload_from_file(file.file, content_type=file.content_type)
-
-        gcs_uri = f"gs://{BUCKET_NAME}/{blob_name}"
-
-        return JSONResponse(content={
-            "video_id": video_id,
-            "gcs_uri": gcs_uri
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def register_video(meta: VideoMetadata):
+    return {
+        "video_id": meta.video_id,
+        "gcs_uri": f"gs://{BUCKET_NAME}/{meta.gcs_path}"
+    }
