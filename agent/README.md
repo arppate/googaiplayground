@@ -1,18 +1,47 @@
-# Clip2Campaign – Agent Microservice
 
-This Cloud Run service powers the ADK conversational agent that:
-- Accepts a video URI (GCS)
-- Extracts frames using OpenCV
-- Scores frames using Gemini 2.0 Flash
-- Lets the user select the best frame in ADK chat UI
-- Generates platform-specific marketing images using Gemini 2.5 Flash Image
-- Allows post-editing via user prompt (Gemini 2.5 Flash Image)
+---
 
-Endpoints:
-POST /process-video
-POST /generate-image
-POST /modify-image
+# **📁 agent/README.md**
 
-Deploy:
-gcloud builds submit --tag gcr.io/<PROJECT_ID>/clip2campaign-agent
-gcloud run deploy clip2campaign-agent --image gcr.io/<PROJECT_ID>/clip2campaign-agent --region us-central1 --platform managed
+```markdown
+# Gaia Agent – Smart Video Repurposer
+
+This folder contains the **Gaia-based multimodal agent** that orchestrates the entire workflow.
+
+The agent handles:
+- Understanding user intent
+- Calling backend APIs
+- Summarizing extracted frames
+- Recommending best frames
+- Generating platform-specific copy
+- Triggering NanoBanana edits
+- Returning final deliverables
+
+---
+
+## 🧠 Capabilities
+- Works as a central brain for the system  
+- Parses user instructions  
+- Chooses the right model/tool (Gemini / NanoBanana)  
+- Coordinates asynchronous tasks  
+
+---
+
+## 📂 Folder Structure
+agent/
+├── app.py
+├── tools/
+│ ├── backend_api.py
+│ ├── gemini_tools.py
+│ └── image_tools.py
+└── policies/
+
+
+---
+
+## 🚀 Running the Agent
+```bash
+python app.py
+
+curl -X POST http://localhost:5000/agent -d '{"query":"Help me repurpose my video"}'
+
