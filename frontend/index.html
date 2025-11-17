@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Clip2Campaign – Upload</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script type="module" src="./js/upload.js"></script>
+</head>
+
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
+
+  <div class="bg-white shadow-lg rounded-xl p-10 w-full max-w-lg">
+    <h1 class="text-3xl font-bold mb-6 text-gray-800 text-center">
+      Upload Your Video
+    </h1>
+
+    <p class="text-gray-600 text-center mb-8">
+      Upload a video to generate social-media-ready marketing images.
+    </p>
+
+    <!-- File Input -->
+    <input 
+      id="videoInput"
+      type="file"
+      accept="video/*"
+      class="block w-full text-gray-700 bg-gray-200 rounded-lg p-3 mb-4 cursor-pointer"
+    />
+
+    <!-- Upload Button -->
+    <button
+      id="uploadBtn"
+      class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition"
+    >
+      Upload Video
+    </button>
+
+    <!-- Status Text -->
+    <p id="status" class="text-center text-gray-600 mt-6"></p>
+  </div>
+
+</body>
+</html>

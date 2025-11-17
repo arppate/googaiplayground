@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Clip2Campaign – Result</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" src="./js/result.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-6">
+  <div class="max-w-4xl mx-auto bg-white shadow rounded-lg p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-bold">Generated Image</h2>
+      <a href="select-frame.html" class="text-sm text-indigo-600">Choose a different frame</a>
+    </div>
+
+    <div id="status" class="text-gray-600 mb-4">Generating image...</div>
+
+    <div id="imageContainer" class="mb-4 flex items-start gap-6">
+      <!-- main image -->
+      <div class="flex-1">
+        <img id="mainImage" class="w-full rounded shadow" src="" alt="Generated" />
+      </div>
+
+      <div class="w-80">
+        <div class="mb-4">
+          <h3 class="font-semibold">Tagline</h3>
+          <div id="tagline" class="text-gray-700"></div>
+        </div>
+
+        <div class="mb-4">
+          <h3 class="font-semibold">Caption variants</h3>
+          <div id="captions" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block mb-2 font-medium">Modify image (prompt)</label>
+      <textarea id="editPrompt" rows="3" class="w-full p-2 border rounded" placeholder="e.g., make background teal-orange cinematic"></textarea>
+      <div class="flex justify-end mt-3 gap-2">
+        <button id="applyEditBtn" class="bg-yellow-500 text-white px-4 py-2 rounded">Apply Edit</button>
+        <button id="downloadBtn" class="bg-green-600 text-white px-4 py-2 rounded">Download</button>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
