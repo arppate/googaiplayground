@@ -90,3 +90,20 @@ export async function modifyImage(imageBase64, prompt) {
   if (!res.ok) throw new Error("Image modification failed");
   return res.json();
 }
+
+export async function getSignedUploadUrl() {
+  const res = await fetch(`${BASE_URL}/generate-upload-url`);
+  if (!res.ok) throw new Error("Failed to get upload URL");
+  return await res.json();
+}
+
+export async function registerVideo({ gcs_path, video_id }) {
+  const res = await fetch(`${BASE_URL}/upload-video`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gcs_path, video_id })
+  });
+  if (!res.ok) throw new Error("Failed to register video");
+  return await res.json();
+}
+
