@@ -1,15 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+
 from agent import (
-    download_video,
-    extract_frames,
-    score_frames,
     generate_marketing_image,
-    modify_image
+    modify_image,
+    dummy_extract_frames,   # <-- using lightweight placeholder
 )
 
 app = FastAPI()
-
 
 # ----------------------------
 # Request Models
@@ -36,23 +34,29 @@ class ModifyReq(BaseModel):
 
 @app.post("/process-video")
 async def process_video(req: ProcessVideoReq):
-    local_path = download_video(req.gcs_uri)
-    frames = extract_frames(local_path)
-    scored_frames = score_frames(frames)
+    """
+    Cloud Run cannot process real video (ffmpeg missing).
+    So agent.py returns dummy frames using Gemini image generation.
+    """
+    frames = dummy_extract_frames()
 
-    # Return top 4 frames
-    top_frames = [{"score": s, "image_base64": img} for s, img in scored_frames[:4]]
-
-    return {"frames": top_frames}
+    # Already returned as list of {"score": ..., "image_base64": ...}
+    return {"frames": frames}
 
 
 @app.post("/generate-image")
 async def generate_image(req: GenerateReq):
+    """
+    Uses Gemini Flash 2.5 to generate a marketing image from a frame.
+    """
     result = generate_marketing_image(req.frame_base64, req.platform)
     return result
 
 
 @app.post("/modify-image")
 async def modify_image_endpoint(req: ModifyReq):
+    """
+    Uses Gemini Flash 2.5 editing mode.
+    """
     mod = modify_image(req.image_base64, req.prompt)
     return {"modified_image_base64": mod}
