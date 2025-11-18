@@ -1,3 +1,13 @@
+import { getSignedUploadUrl, registerVideo } from "./api.js";
+import { state } from "./state.js";
+
+const videoInput = document.getElementById("videoInput");
+const uploadBtn = document.getElementById("uploadBtn");
+
+// Safe fallback for status text
+const statusEl = document.getElementById("status");
+const statusText = statusEl ? statusEl : { textContent: "" };
+
 uploadBtn.addEventListener("click", async () => {
   const file = videoInput.files[0];
   if (!file) {
@@ -5,33 +15,40 @@ uploadBtn.addEventListener("click", async () => {
     return;
   }
 
-  statusText.textContent = "Getting upload URL...";
   uploadBtn.disabled = true;
+  statusText.textContent = "Getting upload URL...";
 
   try {
-    // Step 1: get signed upload URL
+    // -------------------------------
+    // 1. Get signed URL from backend
+    // -------------------------------
     const { upload_url, gcs_path, video_id } = await getSignedUploadUrl();
 
-    statusText.textContent = "Uploading to GCS...";
-    
-    // Step 2: upload video to GCS
+    statusText.textContent = "Uploading video...";
+
+    // -------------------------------
+    // 2. Upload file to GCS PUT URL
+    // -------------------------------
     await fetch(upload_url, {
       method: "PUT",
       headers: { "Content-Type": file.type },
-      body: file
+      body: file,
     });
 
     statusText.textContent = "Registering video...";
 
-    // Step 3: correctly register with backend
-    const meta = await registerVideo(gcs_path, video_id);
+    // -------------------------------
+    // 3. Register video with backend
+    // -------------------------------
+    const response = await registerVideo(gcs_path, video_id);
 
-    // Save in state
-    state.videoId = meta.video_id;
-    state.gcsUri = meta.gcs_uri;
+    // response returns gcs_uri
+    state.gcsUri = response.gcs_uri;
+    state.videoId = video_id;
 
-    statusText.textContent = "Upload complete!";
     localStorage.setItem("clip2_state", JSON.stringify(state));
+
+    statusText.textContent = "Upload complete! Redirecting...";
 
     setTimeout(() => {
       window.location.href = "select-frame.html";
@@ -39,7 +56,7 @@ uploadBtn.addEventListener("click", async () => {
 
   } catch (err) {
     console.error(err);
-    statusText.textContent = "Upload failed. Try again.";
+    statusText.textContent = "Upload failed. Please try again.";
   } finally {
     uploadBtn.disabled = false;
   }
