@@ -1,7 +1,7 @@
 const BACKEND_URL = "https://clip2campaign-backend-770831665204.europe-west1.run.app";
 
 // -------------------------------------
-// 1) Generate signed upload URL (correct)
+// 1) Generate signed upload URL
 // -------------------------------------
 export async function getSignedUploadUrl() {
   const res = await fetch(`${BACKEND_URL}/generate-upload-url`);
@@ -27,14 +27,21 @@ export async function uploadVideoToGCS(uploadUrl, file) {
 // 3) Register uploaded video in backend
 // -------------------------------------
 export async function registerVideo(gcs_path, video_id) {
+  const payload = { gcs_path, video_id };
+
   const res = await fetch(`${BACKEND_URL}/upload-video`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gcs_path, video_id }),
+    body: JSON.stringify(payload),
   });
 
-  if (!res.ok) throw new Error("Failed to register video");
-  return await res.json();
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to register video: ${text}`);
+  }
+
+  // backend now returns full gs:// URI
+  return await res.json(); // { video_id, gcs_uri }
 }
 
 // -------------------------------------
@@ -62,7 +69,7 @@ export async function generateImage(frameBase64, platform) {
   });
 
   if (!res.ok) throw new Error("Image generation failed");
-  return res.json();
+  return await res.json();
 }
 
 // -------------------------------------
@@ -76,5 +83,5 @@ export async function modifyImage(imageBase64, prompt) {
   });
 
   if (!res.ok) throw new Error("Image modification failed");
-  return res.json();
+  return await res.json();
 }
