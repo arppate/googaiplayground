@@ -4,6 +4,9 @@ from pydantic import BaseModel
 from google.cloud import storage
 import uuid
 import os
+import requests
+AGENT_URL = os.getenv("AGENT_URL", "https://clip2campaign-agent-770831665204.europe-west1.run.app")
+
 
 app = FastAPI()
 BUCKET_NAME = os.getenv("VIDEO_BUCKET", "clip2campaign-videos")
@@ -47,3 +50,21 @@ def register_video(meta: VideoMetadata):
         "video_id": meta.video_id,
         "gcs_uri": f"gs://{BUCKET_NAME}/{meta.gcs_path}"
     }
+
+class ProcessReq(BaseModel):
+    gcs_uri: str
+    platforms: list[str]
+
+@app.post("/process-video")
+def process_video(req: ProcessReq):
+    try:
+        # forward this request to the Agent
+        agent_resp = requests.post(
+            f"{AGENT_URL}/process-video",
+            json=req.dict()
+        )
+        
+        return agent_resp.json()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
