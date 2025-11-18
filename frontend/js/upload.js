@@ -1,10 +1,3 @@
-import { getSignedUploadUrl, registerVideo } from './api.js';
-import { state } from './state.js';
-
-const videoInput = document.getElementById("videoInput");
-const uploadBtn = document.getElementById("uploadBtn");
-const statusText = document.getElementById("status");
-
 uploadBtn.addEventListener("click", async () => {
   const file = videoInput.files[0];
   if (!file) {
@@ -16,29 +9,30 @@ uploadBtn.addEventListener("click", async () => {
   uploadBtn.disabled = true;
 
   try {
-    // Step 1: get signed upload URL from backend
-    const { upload_url, gcs_path } = await getSignedUploadUrl();
+    // Step 1: get signed upload URL
+    const { upload_url, gcs_path, video_id } = await getSignedUploadUrl();
 
     statusText.textContent = "Uploading to GCS...";
-    // Step 2: upload directly to GCS using PUT
+    
+    // Step 2: upload video to GCS
     await fetch(upload_url, {
       method: "PUT",
-      headers: {
-        "Content-Type": file.type
-      },
+      headers: { "Content-Type": file.type },
       body: file
     });
 
     statusText.textContent = "Registering video...";
-    // Step 3: register the upload with your backend
-    const meta = await registerVideo({ gcs_path });
+
+    // Step 3: correctly register with backend
+    const meta = await registerVideo(gcs_path, video_id);
 
     // Save in state
-    state.gcsUri = `gs://${meta.gcs_path.includes("/") ? meta.gcs_path.split("/")[0] : ""}/${meta.gcs_path}`;
+    state.videoId = meta.video_id;
+    state.gcsUri = meta.gcs_uri;
+
     statusText.textContent = "Upload complete!";
     localStorage.setItem("clip2_state", JSON.stringify(state));
 
-    // Redirect to frame selection
     setTimeout(() => {
       window.location.href = "select-frame.html";
     }, 500);
