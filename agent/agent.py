@@ -2,17 +2,18 @@ import base64
 import cv2
 import os
 import tempfile
-from vertexai.preview import generative_models, images
 from vertexai.preview.generative_models import GenerativeModel
+from vertexai.preview.vision_models import ImageGenerationModel, ImageEditingModel
 from google.cloud import storage
 
 # Initialize Gemini models
 gemini_text = GenerativeModel("gemini-2.0-flash")
-# For image modification / generation
-IMAGE_MODEL = "gemini-2.5-flash-image"
+
+# New image models
+gen_model = ImageGenerationModel.from_pretrained("gemini-2.5-flash-image")
+edit_model = ImageEditingModel.from_pretrained("gemini-2.5-flash-image")
 
 storage_client = storage.Client()
-
 
 # -------------------------------
 # 1. Download Video From GCS
@@ -53,16 +54,14 @@ def extract_frames(video_path: str, max_frames: int = 6):
 
 
 # -------------------------------
-# 3. Score Frames With Gemini Vision
+# 3. Score Frames
 # -------------------------------
 def score_frames(frames):
     results = []
     for i, frame in enumerate(frames):
-        # Convert OpenCV frame to base64
         _, buf = cv2.imencode(".jpg", frame)
         img_b64 = base64.b64encode(buf).decode()
 
-        # Ask Gemini for "marketing suitability"
         prompt = """
         Rate this frame for its suitability as a marketing hero image.
         Give a score from 1 to 10.
@@ -71,8 +70,10 @@ def score_frames(frames):
         response = gemini_text.generate_content(
             [
                 prompt,
+                # Image part stays same
                 generative_models.Part.from_data(
-                    base64.b64decode(img_b64), mime_type="image/jpeg"
+                    base64.b64decode(img_b64),
+                    mime_type="image/jpeg"
                 ),
             ]
         )
@@ -80,34 +81,29 @@ def score_frames(frames):
         score = extract_score(response.text)
         results.append((score, img_b64))
 
-    # Descending score
     results.sort(key=lambda x: x[0], reverse=True)
     return results
 
 
 def extract_score(text):
-    try:
-        for tok in text.split():
-            if tok.isdigit():
-                return int(tok)
-    except:
-        pass
-    return 5  # fallback default
+    for tok in text.split():
+        if tok.isdigit():
+            return int(tok)
+    return 5
 
 
 # -------------------------------
-# 4. Generate a Marketing Image
+# 4. Generate Marketing Image
 # -------------------------------
 def generate_marketing_image(frame_base64: str, platform: str):
     img_bytes = base64.b64decode(frame_base64)
 
     prompt = f"""
     Create a polished, platform-specific marketing asset for {platform}.
-    Keep the main subject intact but enhance color, lighting and add subtle branded style.
+    Enhance lighting and color. Preserve main subject.
     """
 
-    result = images.generate(
-        model=IMAGE_MODEL,
+    result = gen_model.generate_image(
         prompt=prompt,
         image=img_bytes,
     )
@@ -118,20 +114,19 @@ def generate_marketing_image(frame_base64: str, platform: str):
         "generated_image_base64": out_b64,
         "caption": f"Optimized caption for {platform}",
         "tagline": f"Engaging {platform} ready tagline",
-        "prompt_used": prompt
+        "prompt_used": prompt,
     }
 
 
 # -------------------------------
-# 5. Modify Image (Gemini Flash Image)
+# 5. Modify Image
 # -------------------------------
 def modify_image(image_base64: str, user_prompt: str):
     img_bytes = base64.b64decode(image_base64)
 
-    result = images.edit(
-        model=IMAGE_MODEL,
-        image=img_bytes,
+    result = edit_model.edit_image(
         prompt=user_prompt,
+        image=img_bytes,
     )
 
     modified_b64 = base64.b64encode(result.image_bytes).decode()
