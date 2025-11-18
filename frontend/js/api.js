@@ -1,55 +1,45 @@
 const BACKEND_URL = "https://clip2campaign-backend-770831665204.europe-west1.run.app";
 
-// -----------------------------
-// 1) Generate signed upload URL
-// -----------------------------
-
-export async function generateUploadURL() {
+// -------------------------------------
+// 1) Generate signed upload URL (correct)
+// -------------------------------------
+export async function getSignedUploadUrl() {
   const res = await fetch(`${BACKEND_URL}/generate-upload-url`);
-  if (!res.ok) throw new Error("Failed to generate upload URL");
-  return res.json();
+  if (!res.ok) throw new Error("Failed to get upload URL");
+  return await res.json(); // { upload_url, gcs_path, video_id }
 }
 
-// -----------------------------
-// 2) Upload video to GCS
-// -----------------------------
-
+// -------------------------------------
+// 2) Upload actual file to GCS
+// -------------------------------------
 export async function uploadVideoToGCS(uploadUrl, file) {
   const res = await fetch(uploadUrl, {
     method: "PUT",
-    headers: {
-      "Content-Type": "video/mp4",
-    },
+    headers: { "Content-Type": "video/mp4" },
     body: file,
   });
 
-  if (!res.ok) {
-    console.error("Upload failed:", await res.text());
-    throw new Error("Video upload to GCS failed");
-  }
-
+  if (!res.ok) throw new Error("Video upload to GCS failed");
   return true;
 }
 
-// -----------------------------
-// 3) Register uploaded video
-// -----------------------------
-
-export async function registerVideo(gcsPath, videoId) {
+// -------------------------------------
+// 3) Register uploaded video in backend
+// -------------------------------------
+export async function registerVideo(gcs_path, video_id) {
   const res = await fetch(`${BACKEND_URL}/upload-video`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gcs_path: gcsPath, video_id: videoId }),
+    body: JSON.stringify({ gcs_path, video_id }),
   });
 
   if (!res.ok) throw new Error("Failed to register video");
-  return res.json();
+  return await res.json();
 }
 
-// -----------------------------
-// 4) Process video (frames + scoring)
-// -----------------------------
-
+// -------------------------------------
+// 4) Process video
+// -------------------------------------
 export async function processVideo(gcsUri, platforms) {
   const res = await fetch(`${BACKEND_URL}/process-video`, {
     method: "POST",
@@ -58,13 +48,12 @@ export async function processVideo(gcsUri, platforms) {
   });
 
   if (!res.ok) throw new Error("Video processing failed");
-  return res.json(); // { frames: [...] }
+  return await res.json();
 }
 
-// -----------------------------
+// -------------------------------------
 // 5) Generate marketing images
-// -----------------------------
-
+// -------------------------------------
 export async function generateImage(frameBase64, platform) {
   const res = await fetch(`${BACKEND_URL}/generate-image`, {
     method: "POST",
@@ -76,10 +65,9 @@ export async function generateImage(frameBase64, platform) {
   return res.json();
 }
 
-// -----------------------------
-// 6) Modify generated images
-// -----------------------------
-
+// -------------------------------------
+// 6) Modify images
+// -------------------------------------
 export async function modifyImage(imageBase64, prompt) {
   const res = await fetch(`${BACKEND_URL}/modify-image`, {
     method: "POST",
@@ -90,20 +78,3 @@ export async function modifyImage(imageBase64, prompt) {
   if (!res.ok) throw new Error("Image modification failed");
   return res.json();
 }
-
-export async function getSignedUploadUrl() {
-  const res = await fetch(`${BASE_URL}/generate-upload-url`);
-  if (!res.ok) throw new Error("Failed to get upload URL");
-  return await res.json();
-}
-
-export async function registerVideo({ gcs_path, video_id }) {
-  const res = await fetch(`${BASE_URL}/upload-video`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gcs_path, video_id })
-  });
-  if (!res.ok) throw new Error("Failed to register video");
-  return await res.json();
-}
-
