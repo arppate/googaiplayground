@@ -1,63 +1,62 @@
 import base64
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from vertexai import init as vertex_init
+from vertexai.preview.generative_models import GenerativeModel
+
+# Init Vertex AI (Cloud Run will auto-detect PROJECT + REGION)
+vertex_init()
+
+# Load Gemini Flash 2.5 Image model
+IMAGE_MODEL = GenerativeModel("gemini-2.0-flash")
 
 # -------------------------------------------------------------------
-# INIT VERTEX
+# Dummy frames because Cloud Run cannot extract frames without ffmpeg
 # -------------------------------------------------------------------
-vertexai.init(project="neon-fiber-478418-e3", location="europe-west1")
-
-# Load Gemini models
-TEXT_MODEL = GenerativeModel("gemini-2.5-flash")
-IMAGE_MODEL = GenerativeModel("gemini-2.5-flash-image")
-
-
-# -------------------------------------------------------------------
-# TEXT GENERATION
-# -------------------------------------------------------------------
-def generate_text(prompt: str) -> str:
-    """Generate text using Gemini 2.5 Flash."""
-    response = TEXT_MODEL.generate_content(prompt)
-    return response.text
+def dummy_extract_frames():
+    """Return fake frames so frontend flow works."""
+    placeholder = base64.b64encode(b"fake_image_data").decode("utf-8")
+    return [
+        {"score": 0.98, "image_base64": placeholder},
+        {"score": 0.95, "image_base64": placeholder},
+        {"score": 0.92, "image_base64": placeholder},
+        {"score": 0.90, "image_base64": placeholder},
+    ]
 
 
 # -------------------------------------------------------------------
-# IMAGE GENERATION
+# Marketing Image Generation
 # -------------------------------------------------------------------
-def generate_image(prompt: str, size: str = "1024x1024") -> bytes:
-    """
-    Generate an image using Gemini Flash 2.5 Image model.
-    Returns raw image bytes.
-    """
-    response = IMAGE_MODEL.generate_image(
-        prompt=prompt,
-        size=size,
+def generate_marketing_image(frame_base64: str, platform: str):
+    """Generate a marketing-style image from a frame using Gemini Flash."""
+    prompt = f"Create a marketing-ready ad image for {platform} using this frame."
+
+    response = IMAGE_MODEL.generate_content(
+        [
+            {"mime_type": "image/jpeg", "data": base64.b64decode(frame_base64)},
+            prompt
+        ],
+        generation_config={"max_output_tokens": 2048}
     )
-    return response.images[0].bytes
+
+    image_bytes = response.candidates[0].content.parts[0].data
+    img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    return {"image_base64": img_b64}
 
 
 # -------------------------------------------------------------------
-# IMAGE EDITING
+# Image Modification
 # -------------------------------------------------------------------
-def edit_image(prompt: str, input_image_bytes: bytes, size: str = "1024x1024") -> bytes:
-    """
-    Edit an image using Gemini Flash 2.5 Image model.
-    Returns edited image bytes.
-    """
-    response = IMAGE_MODEL.edit_image(
-        prompt=prompt,
-        image=input_image_bytes,
-        size=size,
+def modify_image(image_base64: str, prompt: str):
+    """Modify an existing image using Gemini Flash 2.5."""
+    response = IMAGE_MODEL.generate_content(
+        [
+            {"mime_type": "image/jpeg", "data": base64.b64decode(image_base64)},
+            prompt
+        ],
+        generation_config={"max_output_tokens": 2048}
     )
-    return response.images[0].bytes
 
+    modified_bytes = response.candidates[0].content.parts[0].data
+    mod_b64 = base64.b64encode(modified_bytes).decode("utf-8")
 
-# -------------------------------------------------------------------
-# BASE64 HELPERS
-# -------------------------------------------------------------------
-def encode_image_to_base64(image_bytes: bytes) -> str:
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-
-def decode_base64_to_bytes(b64: str) -> bytes:
-    return base64.b64decode(b64)
+    return mod_b64
