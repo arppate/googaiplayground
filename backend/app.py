@@ -6,6 +6,7 @@ import uuid
 import os
 import requests
 from fastapi.middleware.cors import CORSMiddleware
+from google.oauth2 import service_account  # <-- import service account
 
 app = FastAPI()
 
@@ -26,6 +27,14 @@ AGENT_URL = os.getenv(
     "AGENT_URL", 
     "https://clip2campaign-agent-770831665204.europe-west1.run.app"
 )
+KEY_FILE_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "key.json")  # <-- path to key.json
+
+# ----------------------------
+# Initialize GCS client with service account
+# ----------------------------
+
+credentials = service_account.Credentials.from_service_account_file(KEY_FILE_PATH)
+storage_client = storage.Client(credentials=credentials, project=credentials.project_id)
 
 # ----------------------------
 # 1) Generate Signed Upload URL
@@ -34,7 +43,6 @@ AGENT_URL = os.getenv(
 @app.get("/generate-upload-url")
 def generate_upload_url():
     try:
-        storage_client = storage.Client()
         bucket = storage_client.bucket(BUCKET_NAME)
 
         video_id = str(uuid.uuid4())
@@ -57,7 +65,6 @@ def generate_upload_url():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # ----------------------------
 # 2) Register uploaded video
 # ----------------------------
@@ -68,13 +75,10 @@ class VideoMetadata(BaseModel):
 
 @app.post("/upload-video")
 def register_video(meta: VideoMetadata):
-
-    # return info to frontend
     return {
         "video_id": meta.video_id,
         "gcs_uri": f"gs://{BUCKET_NAME}/{meta.gcs_path}"
     }
-
 
 # ----------------------------
 # 3) Forwarding: Process Video (calls Agent)
@@ -97,7 +101,6 @@ def process_video(req: ProcessReq):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # ----------------------------
 # 4) Forwarding: Generate Image (calls Agent)
 # ----------------------------
@@ -118,7 +121,6 @@ def generate_image(req: GenerateReq):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ----------------------------
 # 5) Forwarding: Modify Image (calls Agent)
