@@ -1,157 +1,101 @@
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+import cv2
+import base64
+import tempfile
+import numpy as np
+from vertexai import init as vertex_init
+from vertexai.generative_models import GenerativeModel
+
+vertex_init()
+
+MODEL = GenerativeModel("gemini-2.0-flash")
+
+
+# ----------------------------------------------------
+# Download GCS video
+# ----------------------------------------------------
 from google.cloud import storage
-import uuid
-import os
-import requests
-from fastapi.middleware.cors import CORSMiddleware
-from google.oauth2 import service_account
-import logging
 
-app = FastAPI()
+storage_client = storage.Client()
 
-# ----------------------------
-# CORS Configuration
-# ----------------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://googaiplayground.vercel.app"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def download_video(gcs_uri):
+    bucket_name = gcs_uri.split("/")[2]
+    path = "/".join(gcs_uri.split("/")[3:])
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(path)
 
-# ----------------------------
-# Configuration
-# ----------------------------
-BUCKET_NAME = os.getenv("VIDEO_BUCKET", "clip2campaign-videos")
-AGENT_URL = os.getenv(
-    "AGENT_URL",
-    "https://clip2campaign-agent-770831665204.europe-west1.run.app"
-)
-KEY_FILE_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "key.json")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    blob.download_to_filename(tmp.name)
+    return tmp.name
 
-# ----------------------------
-# Initialize GCS client with service account
-# ----------------------------
-credentials = service_account.Credentials.from_service_account_file(KEY_FILE_PATH)
-storage_client = storage.Client(credentials=credentials, project=credentials.project_id)
 
-# ----------------------------
-# 1) Generate Signed Upload URL
-# ----------------------------
-@app.get("/generate-upload-url")
-def generate_upload_url():
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
+# ----------------------------------------------------
+# Extract frames with OpenCV
+# ----------------------------------------------------
+def extract_frames(video_path, num_frames=8):
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        video_id = str(uuid.uuid4())
-        blob_name = f"videos/{video_id}.mp4"
-        blob = bucket.blob(blob_name)
+    if total == 0:
+        return []
 
-        upload_url = blob.generate_signed_url(
-            version="v4",
-            expiration=900,  # 15 minutes
-            method="PUT",
-            content_type="video/mp4",
-        )
+    frames = []
+    interval = max(total // num_frames, 1)
 
-        return {
-            "upload_url": upload_url,
-            "gcs_path": blob_name,
-            "video_id": video_id
-        }
+    for i in range(num_frames):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, i * interval)
+        ret, frame = cap.read()
+        if not ret:
+            continue
 
-    except Exception as e:
-        logging.error(f"Error generating upload URL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # resize for speed
+        frame = cv2.resize(frame, (512, 512))
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        _, buf = cv2.imencode(".jpg", frame_rgb)
+        b64 = base64.b64encode(buf).decode("utf-8")
 
-# ----------------------------
-# 2) Register uploaded video
-# ----------------------------
-class VideoMetadata(BaseModel):
-    gcs_path: str
-    video_id: str
+        frames.append(b64)
 
-@app.post("/upload-video")
-async def register_video(meta: VideoMetadata, request: Request):
-    # log the request payload for debugging
-    body = await request.json()
-    logging.info(f"Received /upload-video payload: {body}")
+    cap.release()
+    return frames
 
-    if not meta.gcs_path or not meta.video_id:
-        raise HTTPException(status_code=422, detail="Missing gcs_path or video_id")
 
-    # return full GCS URI
-    gcs_uri = f"gs://{BUCKET_NAME}/{meta.gcs_path}"
-    return {
-        "video_id": meta.video_id,
-        "gcs_uri": gcs_uri
-    }
+# ----------------------------------------------------
+# Score frames (simple)
+# ----------------------------------------------------
+def score_frames(frames):
+    return [{"score": round(np.random.uniform(0.8, 1.0), 2), "image_base64": f} for f in frames]
 
-# ----------------------------
-# 3) Forwarding: Process Video (calls Agent)
-# ----------------------------
-class ProcessReq(BaseModel):
-    gcs_uri: str
-    platforms: list[str]
 
-@app.post("/process-video")
-def process_video(req: ProcessReq):
-    try:
-        agent_resp = requests.post(
-            f"{AGENT_URL}/process-video",
-            json=req.dict(),
-            timeout=300,
-        )
-        agent_resp.raise_for_status()
-        return agent_resp.json()
+# ----------------------------------------------------
+# Generate image with Gemini
+# ----------------------------------------------------
+def generate_marketing_image(frame_base64, platform):
+    img_bytes = base64.b64decode(frame_base64)
 
-    except requests.RequestException as e:
-        logging.error(f"Error processing video: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    response = MODEL.generate_content(
+        [
+            {"mime_type": "image/jpeg", "data": img_bytes},
+            f"Generate a marketing-style product ad optimized for {platform}."
+        ]
+    )
 
-# ----------------------------
-# 4) Forwarding: Generate Image (calls Agent)
-# ----------------------------
-class GenerateReq(BaseModel):
-    frame_base64: str
-    platform: str
+    out_bytes = response.candidates[0].content.parts[0].data
+    out_b64 = base64.b64encode(out_bytes).decode("utf-8")
+    return {"image_base64": out_b64}
 
-@app.post("/generate-image")
-def generate_image(req: GenerateReq):
-    try:
-        agent_resp = requests.post(
-            f"{AGENT_URL}/generate-image",
-            json=req.dict(),
-            timeout=300,
-        )
-        agent_resp.raise_for_status()
-        return agent_resp.json()
 
-    except requests.RequestException as e:
-        logging.error(f"Error generating image: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# ----------------------------------------------------
+# Modify image
+# ----------------------------------------------------
+def modify_image(image_base64, prompt):
+    img = base64.b64decode(image_base64)
 
-# ----------------------------
-# 5) Forwarding: Modify Image (calls Agent)
-# ----------------------------
-class ModifyReq(BaseModel):
-    image_base64: str
-    prompt: str
+    response = MODEL.generate_content(
+        [
+            {"mime_type": "image/jpeg", "data": img},
+            f"Modify the image with this instruction: {prompt}"
+        ]
+    )
 
-@app.post("/modify-image")
-def modify_image(req: ModifyReq):
-    try:
-        agent_resp = requests.post(
-            f"{AGENT_URL}/modify-image",
-            json=req.dict(),
-            timeout=300,
-        )
-        agent_resp.raise_for_status()
-        return agent_resp.json()
-
-    except requests.RequestException as e:
-        logging.error(f"Error modifying image: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    out_bytes = response.candidates[0].content.parts[0].data
+    return base64.b64encode(out_bytes).decode("utf-8")
